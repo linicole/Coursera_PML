@@ -1,0 +1,172 @@
+---
+title: "Practical Machine Learning Project"
+author: "Nicole Li"
+date: "February 28, 2016"
+---
+<br><br>
+
+##Import the data set
+```{r}
+setwd("C:/Users/Nicole/Desktop/Courses/Coursera/Practical Machine Learning_JHU/project")
+
+traindata <- read.csv("pml-training.csv", sep=",")
+testdata <- read.csv("pml-testing.csv", sep=",")
+dim(traindata)
+dim(testdata)
+```
+<br><br>
+Check the target variable
+```{r}
+summary(traindata$classe)
+```
+<br><br>
+Obtain a general picture on the data set
+```{r}
+colnames(traindata)
+str(traindata)
+```
+<br><br><br><br>
+##Missing Values Detection
+From the above summary, we can see that missing values exist in the data set. In this part, I'll look into each column and see if any features should be taken off.
+```{r}
+#summary(traindata)
+```
+<br><br>
+After carefully investigating on the 5-statistics summary for each feature, I found two useless columns - "X", "raw_timestamp_part_1" and "cvtd_timestamp". Also, all the features with 'kurtosis', 'skewness', 'max', 'min', 'amplitude', 'var', 'avg' and 'stddev' in name hold too many missing values that could not be used in the analysis. I grebed their names by the following code and kick them off from the data set.
+```{r}
+useless <- c("X", "raw_timestamp_part_1", "cvtd_timestamp")
+kurtosis <- grep("kurtosis", names(traindata), value=TRUE) 
+skewness <- grep("skewness", names(traindata), value=TRUE) 
+max <- grep("max", names(traindata), value=TRUE) 
+min <- grep("min", names(traindata), value=TRUE) 
+amplitude <- grep("amplitude", names(traindata), value=TRUE) 
+var <- grep("var", names(traindata), value=TRUE) 
+avg <- grep("avg", names(traindata), value=TRUE) 
+stddev <- grep("stddev", names(traindata), value=TRUE) 
+```
+<br><br>
+Collect these features' names here:
+```{r}
+droplist <- c(useless, kurtosis, skewness, max, min, amplitude, var, avg, stddev)
+length(droplist)
+```
+<br><br>
+Take off the columns from both the training set and the test set.
+```{r}
+train_new <- traindata[,!(names(traindata) %in% droplist)]
+names(train_new)
+dim(train_new)
+
+test_new <- testdata[,!(names(testdata) %in% droplist)]
+names(test_new)
+dim(test_new)
+```
+<br><br><br><br>
+
+##Feature Selection
+In this part, I will perform the feature selection by detecting the correlations among the features in the new training and test set. The caret package will be used here.
+<br><br>
+To calculate the correlations, I only work with the numeric features.
+```{r}
+train_numeric <- subset(train_new, select=-c(user_name, new_window))
+test_numeric <- subset(test_new, select=-c(user_name, new_window))
+names(train_numeric)
+```
+<br><br>
+Calculate the correlation with only training set here:
+```{r}
+library(caret)
+cm_new <- cor(train_numeric[,1:54])
+hc <- findCorrelation(cm_new, cutoff=0.75)
+hc = sort(hc)
+```
+<br><br>
+With the highly correlated features, I took them off from the data set. And then re-construct the data set again.
+```{r}
+train_reduced = train_numeric[,-c(hc)]
+test_reduced = test_numeric[,-c(hc)]
+names(train_reduced)
+
+train_new <- cbind(train_new["user_name"], train_reduced[,1:2], train_new["new_window"], train_reduced[,3:34])
+test_new <- cbind(test_new["user_name"], test_reduced[,1:2], test_new["new_window"], test_reduced[,3:34])
+names(train_new)
+```
+<br>
+Now, the data set is ready for the classification use. 
+<br><br><br><br>
+
+
+##Split the data set into Training and Testing
+<br><br>
+With createDataPartition in caret package, I was able to split the training set in to training_new (for cross-validation) and testing_new (for evaluation).
+```{r}
+library(caret)
+set.seed(1568)
+
+inTrain_new <- createDataPartition(y=train_new$classe, p=0.7, list=FALSE)
+training_new <- train_new[inTrain_new, ]
+testing_new <- train_new[-inTrain_new, ]
+dim(training_new)
+dim(testing_new)
+```
+<br><br><br><br>
+##Tree Model with train_new
+Set up the cross-validation indictor function and build the tree model with it.
+```{r}
+fitControl1 <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
+
+set.seed(825)
+gbmFit1 <- train(as.factor(classe) ~ ., data = training_new,
+                 method = "rpart",
+                 trControl = fitControl1)
+```
+<br><br>
+Check the model result
+```{r}
+gbmFit1
+```
+<br><br>
+Predict on the testing data.
+```{r}
+gbmPred1 <- predict(gbmFit1, testing_new)
+```
+<br><br>
+```{r}
+confusionMatrix(gbmPred1, testing_new$classe)
+```
+<br><br><br><br>
+
+##Random Forest Model with train_new
+<br><br>
+In this part, I performed the random forest classificaion on the training set. The initial predict result is very good on the testing data, with an accuracy as high as 0.87. However, this method needs an extremely long running time, so that I have no time to repeat it here in the HTML file. But I've showed my code as the following.
+<br><br>
+
+Random Forest Model
+```{r}
+#rfFit <- train(as.factor(classe) ~ ., data = training_new,
+#                 method = "rf", 
+#                 prox=TRUE,
+#                 allowParallel=TRUE)
+#rfFit
+
+#print(rfFit$finalModel)
+```
+<br><br>
+
+Predict on the testing data.
+```{r}
+#rfPred <- predict(rfFit, testing_new)
+```
+<br><br>
+```{r}
+#confusionMatrix(rfPred, testing_new$classe)
+```
+<br><br><br><br>
+
+##Conclusion
+Tree models are very flexible methods regarding to the data type of features. This could save me lots of time on creating dummy variables or so.
+
+When solving a high dimension classification problem, random forest would be the best way to go. Even without cross validation on modeling, it could overperform the best selected decision tree. 
+
+
+
